@@ -8,7 +8,7 @@
 version: '3.8'
 services:
   cleanup:
-    image: ghcr.io/YOUR_USERNAME/qbittorrent-cleanup:latest
+    image: ghcr.io/memearchivarius/qbittorrent-cleanup:latest
     environment:
       - QB_URL=http://qbittorrent:8080
       - QB_USER=admin
