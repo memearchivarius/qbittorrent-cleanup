@@ -3,7 +3,20 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+    # Триггер только при изменениях в этих путях
+    paths:
+      - 'Dockerfile'
+      - 'cleanup.py'
+      - 'requirements.txt'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'cleanup.py'
+      - 'requirements.txt'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:  # Ручной запуск
 
 env:
   REGISTRY: ghcr.io
