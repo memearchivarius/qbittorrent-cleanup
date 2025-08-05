@@ -3,7 +3,6 @@ import time
 import os
 from datetime import datetime
 import posixpath
-import ntpath
 
 # Конфигурация из переменных окружения
 QB_URL = os.getenv('QB_URL', 'http://qbittorrent:8080')
@@ -29,62 +28,47 @@ def delete_torrent(session, torrent_hash):
     })
     return r.status_code == 200
 
-def get_torrent_folder(torrent):
-    """Получает имя папки торрента из пути сохранения"""
-    save_path = torrent['save_path']
-    content_path = torrent['content_path']
+def get_torrent_name_key(torrent):
+    """
+    Получает ключ для группировки торрентов по имени папки.
+    Используем имя торрента как идентификатор папки.
+    """
+    save_path = torrent['save_path'].rstrip('/')  # Убираем слэш в конце если есть
+    torrent_name = torrent['name']
     
-    # Для одиночных файлов content_path может быть файлом, для папок - папкой
-    # Нам нужна именно папка торрента
-    
-    # Если content_path начинается с save_path, выделяем папку
-    if content_path.startswith(save_path):
-        relative_path = content_path[len(save_path):].lstrip('/')
-        # Берем только первую часть пути (имя папки торрента)
-        torrent_folder = relative_path.split('/')[0] if '/' in relative_path else relative_path
-        # Если путь пустой или точка, значит торрент в корне save_path
-        if not torrent_folder or torrent_folder == '.':
-            # Используем имя торрента как папку
-            return torrent.get('name', 'unknown')
-        return torrent_folder
-    else:
-        # fallback - используем имя торрента
-        return torrent.get('name', 'unknown')
+    # Ключ группировки: путь + имя торрента
+    return f"{save_path}/{torrent_name}"
 
 def format_timestamp(timestamp):
     return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
 
-def remove_old_torrents_with_same_folder():
+def remove_old_torrents_with_same_name():
     session = requests.Session()
     try:
         login(session)
         torrents = get_torrents(session)
 
-        # Группируем торренты по комбинации (save_path, torrent_folder)
-        torrents_by_folder = {}
+        # Группируем торренты по имени папки внутри save_path
+        torrents_by_name = {}
         
         for t in torrents:
-            save_path = t['save_path']
-            torrent_folder = get_torrent_folder(t)
+            torrent_key = get_torrent_name_key(t)
             
-            # Создаем уникальный ключ для группы
-            group_key = (save_path, torrent_folder)
-            
-            if group_key not in torrents_by_folder:
-                torrents_by_folder[group_key] = []
-            torrents_by_folder[group_key].append(t)
+            if torrent_key not in torrents_by_name:
+                torrents_by_name[torrent_key] = []
+            torrents_by_name[torrent_key].append(t)
 
         deleted_count = 0
         
         # Для каждой группы с более чем 1 торрентом
-        for (save_path, folder), torrents_list in torrents_by_folder.items():
+        for torrent_key, torrents_list in torrents_by_name.items():
             if len(torrents_list) > 1:
                 # Сортируем по времени добавления (чем меньше added_on, тем старше)
                 torrents_list.sort(key=lambda x: x['added_on'])
                 
                 # Обрабатываем все, кроме последнего (самого нового)
                 for old_torrent in torrents_list[:-1]:
-                    torrent_info = f"Torrent: {old_torrent['name']} | Folder: {folder} | Added: {format_timestamp(old_torrent['added_on'])} | Path: {save_path}"
+                    torrent_info = f"Torrent: {old_torrent['name']} | Added: {format_timestamp(old_torrent['added_on'])} | Key: {torrent_key}"
                     
                     if DRY_RUN:
                         print(f"[DRY RUN] Будет удален: {torrent_info}")
@@ -106,7 +90,7 @@ def remove_old_torrents_with_same_folder():
 def main():
     print(f"=== qBittorrent Cleanup Service ===")
     print(f"QB_URL: {QB_URL}")
-    print(f"DRY_RUN: {DRY_RUN}")
+    print(f"DRY RUN: {DRY_RUN}")
     print(f"DELETE_FILES: {DELETE_FILES}")
     print(f"CHECK_INTERVAL: {CHECK_INTERVAL} секунд")
     print(f"================================")
@@ -117,7 +101,7 @@ def main():
         print("[АКТИВНЫЙ РЕЖИМ] Торренты будут удаляться!")
     
     # Однократный запуск для Docker
-    remove_old_torrents_with_same_folder()
+    remove_old_torrents_with_same_name()
 
 if __name__ == '__main__':
     main()
